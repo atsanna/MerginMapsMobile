@@ -2348,6 +2348,16 @@ void TestMerginApi::testSynchronizationViaManager()
 
   QVERIFY( syncmanager.hasPendingSync( projectfullname ) );
 
+  // Repeated clicks and direct API requests must preserve the running upload.
+  const int startedCount = syncStartedSpy.count();
+  QNetworkReply *pushReply = mApi->transactions().value( projectfullname ).replyPushProjectInfo;
+  QVERIFY( pushReply );
+  syncmanager.syncProject( project );
+  QVERIFY( !mApi->pushProject( mWorkspaceName, projectname ) );
+  QVERIFY( !mApi->pullProject( mWorkspaceName, projectname ) );
+  QCOMPARE( syncStartedSpy.count(), startedCount );
+  QCOMPARE( mApi->transactions().value( projectfullname ).replyPushProjectInfo.data(), pushReply );
+
   syncProgressedSpy.wait( TestUtils::SHORT_REPLY );
   QVERIFY( syncProgressedSpy.count() );
 
@@ -2356,6 +2366,20 @@ void TestMerginApi::testSynchronizationViaManager()
   QVERIFY( syncStartedSpy.count() );
   QVERIFY( syncFinishedSpy.count() );
   QVERIFY( syncProgressedSpy.count() );
+  QVERIFY( !syncmanager.hasPendingSync( projectfullname ) );
+  QVERIFY( !mApi->transactions().contains( projectfullname ) );
+
+  // A new sync is allowed after completion; duplicates during a pull are blocked too.
+  syncFinishedSpy.clear();
+  QVERIFY( mApi->pullProject( mWorkspaceName, projectname ) );
+  QNetworkReply *pullReply = mApi->transactions().value( projectfullname ).replyPullProjectInfo;
+  QVERIFY( pullReply );
+  QVERIFY( !mApi->pullProject( mWorkspaceName, projectname ) );
+  QVERIFY( !mApi->pushProject( mWorkspaceName, projectname ) );
+  QCOMPARE( mApi->transactions().value( projectfullname ).replyPullProjectInfo.data(), pullReply );
+  QVERIFY( syncFinishedSpy.wait( TestUtils::LONG_REPLY ) );
+  QVERIFY( !syncmanager.hasPendingSync( projectfullname ) );
+  QVERIFY( !mApi->transactions().contains( projectfullname ) );
 }
 
 void TestMerginApi::testAutosync()

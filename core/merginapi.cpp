@@ -785,6 +785,12 @@ void MerginApi::pushFinish( const QString &projectFullName, const QString &trans
 bool MerginApi::pullProject( const QString &projectNamespace, const QString &projectName, bool withAuth )
 {
   QString projectFullName = getFullProjectName( projectNamespace, projectName );
+  // Ignore repeated requests without replacing the active transaction.
+  if ( mTransactionalStatus.contains( projectFullName ) )
+  {
+    return false;
+  }
+
   bool pullHasStarted = false;
 
   CoreUtils::log( "pull " + projectFullName, "### Starting ###" );
@@ -816,6 +822,12 @@ bool MerginApi::pullProject( const QString &projectNamespace, const QString &pro
 bool MerginApi::pushProject( const QString &projectNamespace, const QString &projectName, bool isInitialPush )
 {
   QString projectFullName = getFullProjectName( projectNamespace, projectName );
+  // Ignore repeated requests without replacing the active transaction.
+  if ( mTransactionalStatus.contains( projectFullName ) )
+  {
+    return false;
+  }
+
   bool pushHasStarted = false;
 
   CoreUtils::log( "push " + projectFullName, "### Starting ###" );

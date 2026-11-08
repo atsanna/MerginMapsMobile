@@ -304,6 +304,7 @@ ApplicationWindow {
 
         text: qsTr("Sync")
         iconSource: __style.syncIcon
+        enabled: !iconRotateAnimationRunning
         onClicked: {
           __activeProject.requestSync()
         }

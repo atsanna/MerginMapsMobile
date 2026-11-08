@@ -73,6 +73,7 @@ Rectangle {
 
     list.delegate: MMListDelegate {
       text: model.text
+      enabled: model.btnData.enabled
       leftContent: MMIcon { source: model.iconSource }
       onClicked: {
         menu.close()

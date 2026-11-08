@@ -247,6 +247,7 @@ Control {
 
       list.delegate: MMListDelegate {
         text: model.name
+        enabled: !root.projectIsInSync || ( model.type !== "sync" && model.type !== "upload" && model.type !== "download" )
 
         leftContent: MMIcon {
           source: model.iconSource
