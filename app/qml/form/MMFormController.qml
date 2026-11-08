@@ -21,6 +21,7 @@ Item {
 
   property var project
   property var featureLayerPair
+  property var parentForm
 
   // child features in relations need to have these set in order to prefill their foreign keys
   property var linkedRelation
@@ -47,6 +48,10 @@ Item {
   signal multiSelectFeature( var feature )
   signal stakeoutFeature( var feature )
   signal previewPanelChanged( var panelHeight )
+
+  function saveForChild() {
+    return featureForm.saveForChild()
+  }
 
   function openDrawer() {
     root.panelState = "form"
@@ -206,10 +211,16 @@ Item {
 
       layerIsReadOnly: root.layerIsReadOnly
       layerIsSpatial: root.layerIsSpatial
+      saveParentForm: root.parentForm ? () => root.parentForm.saveForChild() : null
 
-      onSaved: {
+      onSaved: function( closeAfterSave ) {
         root.saveRequested()
-        drawer.close()
+        if ( closeAfterSave ) {
+          drawer.close()
+        }
+        else {
+          root.formState = "edit"
+        }
       }
       onCanceled: drawer.close()
 

@@ -1257,10 +1257,9 @@ bool AttributeController::save()
 
   if ( !startEditing() )
   {
+    emit commitFailed();
     return false;
   }
-
-  bool rv = true;
 
   QgsFeature feat = mFeatureLayerPair.feature();
 
@@ -1271,6 +1270,9 @@ bool AttributeController::save()
     if ( !mFeatureLayerPair.layer()->addFeature( feat ) )
     {
       CoreUtils::log( QStringLiteral( "Attribute Controller" ), QStringLiteral( "Feature could not be added" ) );
+      rollback();
+      emit commitFailed();
+      return false;
     }
     connect( mFeatureLayerPair.layer(), &QgsVectorLayer::featureAdded, this, &AttributeController::onFeatureAdded );
   }
@@ -1289,6 +1291,9 @@ bool AttributeController::save()
     if ( !mFeatureLayerPair.layer()->updateFeature( feat, true ) )
     {
       CoreUtils::log( QStringLiteral( "Attribute Controller" ), QStringLiteral( "Cannot update feature" ) );
+      rollback();
+      emit commitFailed();
+      return false;
     }
   }
 
@@ -1296,10 +1301,17 @@ bool AttributeController::save()
 
   // This calls lower-level I/O functions which shouldn't be used
   // in a Q_INVOKABLE because they can make the UI unresponsive.
-  rv = commit();
+  const bool rv = commit();
 
   if ( rv )
   {
+    // A form saved from a child stays open. Use the saved values as its new baseline.
+    for ( const auto &item : std::as_const( mFormItems ) )
+    {
+      if ( item->type() == FormItem::Field )
+        item->setOriginalValue( mFeatureLayerPair.feature().attribute( item->fieldIndex() ) );
+    }
+    setHasAnyChanges( false );
     emit changesCommited();
   }
   else

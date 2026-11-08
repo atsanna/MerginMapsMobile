@@ -158,6 +158,7 @@ Item {
 
   function openLinkedFeature( linkedFeature ) {
     let props = {
+      parentForm: _getActiveForm(),
       featureLayerPair: linkedFeature,
       formState: "readOnly",
       panelState: "form"
@@ -168,6 +169,7 @@ Item {
 
   function addLinkedFeature( newPair, parentController, relation ) {
     let props = {
+      parentForm: _getActiveForm(),
       featureLayerPair: newPair,
       formState: "add",
       panelState: "form",

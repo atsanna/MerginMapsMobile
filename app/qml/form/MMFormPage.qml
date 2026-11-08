@@ -35,7 +35,7 @@ Page {
   /**
    * When feature in the form is saved.
    */
-  signal saved
+  signal saved( bool closeAfterSave )
 
   /**
    * When the form is about to be closed by closeButton or deleting a feature.
@@ -63,6 +63,7 @@ Page {
    * Controller
    */
   property MM.AttributeController controller
+  property var saveParentForm
 
   implicitWidth: ApplicationWindow.window?.width ?? 0
   implicitHeight: ApplicationWindow.window?.height ?? 0
@@ -433,7 +434,7 @@ Page {
     target: root.controller
 
     function onChangesCommited() {
-      root.saved()
+      root.saved( !internal.savingForChild )
     }
 
     function onCommitFailed() {
@@ -445,17 +446,39 @@ Page {
     master.reset()
   }
 
-  function save() {
-    if ( controller.hasValidationErrors )
-    {
-      __notificationModel.addError( qsTr( 'Feature could not be saved, please check all required fields' ) )
-
-      // In future we could navigate user to a field that contains validation error
-      return
+  function saveForChild() {
+    if ( root.state === "readOnly" || ( root.state !== "add" && !controller.hasAnyChanges ) ) {
+      return !saveParentForm || saveParentForm()
     }
 
-    parent.focus = true
-    controller.save()
+    return save( true )
+  }
+
+  function save( forChild = false ) {
+    Qt.inputMethod.commit()
+    if ( controller.hasValidationErrors )
+    {
+      __notificationModel.addError( forChild
+        ? qsTr( "Complete the required fields in the parent feature before saving this feature." )
+        : qsTr( "Feature could not be saved, please check all required fields" ) )
+      return false
+    }
+
+    if ( saveParentForm && !saveParentForm() ) {
+      return false
+    }
+
+    if ( !forChild ) {
+      parent.focus = true
+    }
+
+    internal.savingForChild = forChild
+    try {
+      return controller.save()
+    }
+    finally {
+      internal.savingForChild = false
+    }
   }
 
   function rollbackAndClose() {
@@ -491,6 +514,7 @@ Page {
   QtObject {
     id: internal
 
+    property bool savingForChild: false
     property real formSpacing: 20 * __dp
   }
 }
