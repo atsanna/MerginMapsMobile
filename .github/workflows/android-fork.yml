@@ -1,0 +1,118 @@
+name: Android APK for testing
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/mobile-sync-parent-save
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-fork-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: macos-26
+    timeout-minutes: 360
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      SDK_BUILD_TOOLS: '36.0.0'
+      QT_ANDROID_KEYSTORE_ALIAS: androiddebugkey
+      QT_ANDROID_KEYSTORE_KEY_PASS: android
+      QT_ANDROID_KEYSTORE_STORE_PASS: android
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: mm
+          persist-credentials: false
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1.7.0
+        with:
+          xcode-version: '26.4.1'
+
+      - name: Install native build dependencies
+        run: |
+          find /Applications/Xcode_* -maxdepth 0 -type d ! -name 'Xcode_26.4.1.app' -exec rm -rf {} \;
+          brew install automake bison flex gnu-sed autoconf-archive libtool gettext openssl
+          for tool in bison flex gettext; do
+            echo "$(brew --prefix "$tool")/bin" >> "$GITHUB_PATH"
+          done
+
+      - name: Set up CMake and Ninja
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: '4.3.2'
+
+      - name: Set up Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: zulu
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
+      - name: Install Android tools and generate a test signing key
+        run: |
+          sdkmanager 'platforms;android-36' "build-tools;$SDK_BUILD_TOOLS" platform-tools
+          key_path="$RUNNER_TEMP/mergin-test.keystore"
+          keytool -genkeypair -keystore "$key_path" -alias "$QT_ANDROID_KEYSTORE_ALIAS" \
+            -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=Mergin Maps Test APK' \
+            -storepass "$QT_ANDROID_KEYSTORE_STORE_PASS" -keypass "$QT_ANDROID_KEYSTORE_KEY_PASS"
+          echo "QT_ANDROID_KEYSTORE_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Bootstrap pinned vcpkg
+        run: |
+          git clone --filter=blob:none https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout --detach "$(cat mm/VCPKG_BASELINE)"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Configure and build APK
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          MM_VERSION_CODE: ${{ github.run_number }}
+          VCPKG_BINARY_SOURCES: clear
+        run: |
+          export PATH="$VCPKG_ROOT:$PATH"
+          cmake -S mm -B build-mm -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_HOST_TRIPLET=arm64-osx \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_INSTALL_OPTIONS=--allow-unsupported \
+            -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
+            -DANDROID_BUILD_TOOLS_VERSION="$SDK_BUILD_TOOLS" \
+            -DANDROID_ABI=arm64-v8a \
+            -DQT_ANDROID_ABIS=arm64-v8a \
+            -DQT_ANDROID_SIGN_APK=ON \
+            -DUSE_MM_SERVER_API_KEY=OFF \
+            -DWITH_TRIMBLE_PROVIDERS=OFF \
+            -DUSE_KEYCHAIN=OFF \
+            -DENABLE_TESTS=OFF
+          cmake --build build-mm --target apk
+
+      - name: Verify APK signature
+        run: |
+          apk=build-mm/app/android-build/build/outputs/apk/release/android-build-release-signed.apk
+          "$ANDROID_SDK_ROOT/build-tools/$SDK_BUILD_TOOLS/apksigner" verify "$apk"
+          cp "$apk" mergin-maps-test-arm64-v8a.apk
+
+      - name: Upload test APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: mergin-maps-test-arm64-v8a
+          path: mergin-maps-test-arm64-v8a.apk
+          if-no-files-found: error
